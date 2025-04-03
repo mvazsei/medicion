@@ -6,11 +6,14 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.xr.runtime.math.toRadians
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -20,11 +23,17 @@ class MainActivity : AppCompatActivity(){
 
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var resultTextView: TextView
+    private lateinit var databadase: DatabaseReference
 
     private var gpsPoints : MutableList<Pair<Double,Double>> = mutableListOf()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        //Inicializamos bd
+        databadase = FirebaseDatabase.getInstance().reference
+
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
         resultTextView = findViewById(R.id.resultTextView)
 
@@ -121,6 +130,29 @@ class MainActivity : AppCompatActivity(){
             Toast.makeText(this, "Permiso de ubicación concedido", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "Permiso de ubicación denegado", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun mostrarCodigosMedicion(onSuccess: (String)->Unit){
+        databadase.child("medicion").get().addOnSuccessListener { snapshot->
+            if(snapshot.exists()){
+                //obtenemos todos los códigos disponibles
+                val codigos = snapshot.children.map{it.key.toString()}
+
+                //mostramos codigos en un dialogo
+                val builder =AlertDialog.Builder(this)
+                builder.setTitle("Selecciona un codigo")
+                builder.setItems(codigos.toTypedArray()){ _, which->
+                    val codigoSeleccionao =codigos[which]
+                    Toast.makeText(this, "codigo seleccionado: $codigoSeleccionao",Toast.LENGTH_SHORT).show()
+                    guardarMedicion(codigoSeleccionao,calcularArea())
+                }
+                builder.show()
+            }else{
+                Toast.makeText(this, "No hay codigos disponibles",Toast.LENGTH_SHORT).show()
+            }
+        }.addOnFailureListener {
+            Toast.makeText(this, "Error al obtener códigos",Toast.LENGTH_SHORT).show()
         }
     }
 
