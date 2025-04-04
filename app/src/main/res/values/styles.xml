@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Tema principal de la aplicación -->
-    <style name="Theme.Medicine" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="Theme.Medicion_1" parent="Theme.AppCompat.Light.NoActionBar">
         <!-- Personalización opcional -->
         <item name="colorPrimary">@color/purple_500</item>
         <item name="colorPrimaryDark">@color/purple_700</item>

@@ -3,17 +3,26 @@ package com.example.medicion
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Looper
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.xr.runtime.math.toRadians
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import android.location.Location
 
 
 class MainActivity : AppCompatActivity(){
@@ -21,10 +30,17 @@ class MainActivity : AppCompatActivity(){
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var resultTextView: TextView
 
+
     private var gpsPoints : MutableList<Pair<Double,Double>> = mutableListOf()
+    private lateinit var lastKnownLocation : Location //almacena ultima ubicacion conocida
+    private lateinit var locationCallback: LocationCallback
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+
+
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
         resultTextView = findViewById(R.id.resultTextView)
 
@@ -32,44 +48,27 @@ class MainActivity : AppCompatActivity(){
         val calculateAreaButton : Button = findViewById(R.id.calculateAreaButton)
         val newMeasurementButton : Button = findViewById(R.id.newMeasurementButton)
         checkLocationPermissions()
+        iniciarActualizacionesDeUbicacion()
 
 
 
         //boton para marcar puntos gps
         markPointButton.setOnClickListener {
-            if (ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
-                return@setOnClickListener
-            }
-            fusedLocationProviderClient.lastLocation.addOnSuccessListener {location ->
-                if(location!=null){
-                    if(gpsPoints.size<3){
-                        gpsPoints.add(Pair(location.latitude,location.longitude))
-                        Toast.makeText(this, "Punto ${gpsPoints.size} marcado: (${location.latitude}, ${location.longitude})",
-                            Toast.LENGTH_SHORT).show()
-
-                    }else{
-                        Toast.makeText(this, "Ya has marcado 3 puntos",
-                            Toast.LENGTH_SHORT).show()
-                    }
-                }else{
-                    Toast.makeText(this, "No se puede obtener ubicación",
-                        Toast.LENGTH_SHORT).show()
+            if (::lastKnownLocation.isInitialized) { // Verificamos que se haya inicializado la ubicación
+                if (gpsPoints.size < 3) {
+                    gpsPoints.add(Pair(lastKnownLocation.latitude, lastKnownLocation.longitude))
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Punto ${gpsPoints.size} marcado: (${lastKnownLocation.latitude}, ${lastKnownLocation.longitude})",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Ya has marcado 3 puntos.", Toast.LENGTH_SHORT).show()
                 }
+            } else {
+                Toast.makeText(this, "La ubicación aún no está lista.", Toast.LENGTH_SHORT).show()
             }
+
         }
         //Botón para calcular el area
         calculateAreaButton.setOnClickListener {
@@ -110,19 +109,86 @@ class MainActivity : AppCompatActivity(){
     }
 
     private fun checkLocationPermissions() {
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), 1)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // Si el permiso no está concedido, solicítalo
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
+        } else {
+            // El permiso ya está concedido
+            inicializarUbicacion()
         }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "Permiso de ubicación concedido", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "Permiso de ubicación denegado", Toast.LENGTH_SHORT).show()
+        if (requestCode == 1) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Permiso de ubicación concedido", Toast.LENGTH_SHORT).show()
+                inicializarUbicacion()
+            } else {
+                Toast.makeText(this, "Permiso de ubicación denegado", Toast.LENGTH_SHORT).show()
+            }
         }
     }
+
+    private fun inicializarUbicacion() {
+        // Aquí puedes iniciar el uso de la ubicación (por ejemplo, con fusedLocationProviderClient)
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+    }
+
+    private fun iniciarActualizacionesDeUbicacion(){
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY,1000L)
+            .setMinUpdateIntervalMillis(500L)
+            .build()
+        val locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                val location = locationResult.lastLocation
+                if (location != null) {
+                    // Actualizamos la última ubicación conocida constantemente
+                    lastKnownLocation = location
+                }
+            }
+        }
+
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return
+        }
+        LocationServices.getFusedLocationProviderClient(this).requestLocationUpdates(
+            locationRequest,
+            locationCallback,
+            Looper.getMainLooper()
+        )
+    }
+
+
+
+    private fun detenerActualizacionesDeUbicacion() {
+        LocationServices.getFusedLocationProviderClient(this)
+            .removeLocationUpdates(locationCallback)
+    }
+    override fun onDestroy() {
+        super.onDestroy()
+        detenerActualizacionesDeUbicacion()
+    }
+
+
+
+
+
+
 
 }
 
